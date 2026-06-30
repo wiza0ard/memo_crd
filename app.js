@@ -366,25 +366,53 @@ let deckKeys = [];
 
 function initIndex() {
   const cfg = GitHub.loadCfg();
+  
+  // 설정 모달 관련 요소 확인
+  const appEl = document.getElementById('app');
+  const modalEl = document.getElementById('setup-modal');
+  const saveBtn = document.getElementById('setup-save-btn');
+  
   if (!cfg || !cfg.token) {
-    document.getElementById('app').classList.add('hidden');
-    document.getElementById('setup-modal').classList.remove('hidden');
-    document.getElementById('setup-save-btn').addEventListener('click', saveSetup);
+    if (appEl) appEl.classList.add('hidden');
+    if (modalEl) modalEl.classList.remove('hidden');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', saveSetup);
+    } else {
+      console.warn('setup-save-btn not found, will retry');
+      // 버튼이 없으면 DOM 로드 완료 후 재시도
+      setTimeout(() => {
+        const btn = document.getElementById('setup-save-btn');
+        if (btn) btn.addEventListener('click', saveSetup);
+      }, 100);
+    }
     return;
   }
-  document.getElementById('setup-modal').classList.add('hidden');
-  document.getElementById('app').classList.remove('hidden');
+  
+  if (modalEl) modalEl.classList.add('hidden');
+  if (appEl) appEl.classList.remove('hidden');
 
-  // 이벤트 바인딩
-  document.getElementById('nextBtn').addEventListener('click', nextCard);
-  document.getElementById('prevBtn').addEventListener('click', prevCard);
-  document.getElementById('shuffleBtn').addEventListener('click', shuffleDeck);
-  document.getElementById('resetBtn').addEventListener('click', resetScores);
-  document.getElementById('deleteBtn').addEventListener('click', deleteCurrentCard);
-  document.getElementById('copyBtn').addEventListener('click', copyCurrentWord);
-  document.getElementById('refreshBtn').addEventListener('click', () => { loadAllData(false).then(renderIndex); });
-  document.getElementById('settingsBtn').addEventListener('click', openSetup);
+  // 이벤트 바인딩 (모든 요소가 존재하는지 확인)
+  const elements = {
+    nextBtn: document.getElementById('nextBtn'),
+    prevBtn: document.getElementById('prevBtn'),
+    shuffleBtn: document.getElementById('shuffleBtn'),
+    resetBtn: document.getElementById('resetBtn'),
+    deleteBtn: document.getElementById('deleteBtn'),
+    copyBtn: document.getElementById('copyBtn'),
+    refreshBtn: document.getElementById('refreshBtn'),
+    settingsBtn: document.getElementById('settingsBtn'),
+  };
 
+  if (elements.nextBtn) elements.nextBtn.addEventListener('click', nextCard);
+  if (elements.prevBtn) elements.prevBtn.addEventListener('click', prevCard);
+  if (elements.shuffleBtn) elements.shuffleBtn.addEventListener('click', shuffleDeck);
+  if (elements.resetBtn) elements.resetBtn.addEventListener('click', resetScores);
+  if (elements.deleteBtn) elements.deleteBtn.addEventListener('click', deleteCurrentCard);
+  if (elements.copyBtn) elements.copyBtn.addEventListener('click', copyCurrentWord);
+  if (elements.refreshBtn) elements.refreshBtn.addEventListener('click', () => { loadAllData(false).then(renderIndex); });
+  if (elements.settingsBtn) elements.settingsBtn.addEventListener('click', openSetup);
+
+  // ★/❌ 버튼
   document.querySelectorAll('[data-action]').forEach(btn => {
     btn.addEventListener('click', function() {
       const action = this.dataset.action;
@@ -409,8 +437,10 @@ function initIndex() {
     else if (key === 'v' || key === 'V') { e.preventDefault(); copyCurrentWord(); }
   });
 
-  // 토큰 저장 버튼
-  document.getElementById('setup-save-btn').addEventListener('click', saveSetup);
+  // 토큰 저장 버튼 (이미 바인딩됨)
+  if (saveBtn) {
+    saveBtn.addEventListener('click', saveSetup);
+  }
 
   loadAllData(false).then(() => {
     renderIndex();
