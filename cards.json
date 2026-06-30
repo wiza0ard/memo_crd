@@ -1,0 +1,107 @@
+[
+  {
+    "id": 1719700001000,
+    "deck": "영어단어",
+    "baseWord": "compensate",
+    "stages": [
+      {
+        "label": "결합어구/예문",
+        "fields": {
+          "headword": "compensate for",
+          "phonetic": "[KOM-puhn-seyt fawr]",
+          "examples": [
+            "Nothing can compensate for the loss of a loved one.",
+            "She tried to compensate for her mistake by working overtime."
+          ]
+        }
+      },
+      {
+        "label": "단어별 주석",
+        "fields": {
+          "entries": [
+            {
+              "word": "compensate",
+              "difficulty": "L2",
+              "definition_en": "to provide something good as a balance against damage, loss, or suffering",
+              "gloss_kr": "보상"
+            },
+            {
+              "word": "loss",
+              "difficulty": "L1",
+              "definition_en": "the fact of no longer having something",
+              "gloss_kr": "상실"
+            }
+          ]
+        }
+      }
+    ],
+    "createdAt": "2026-06-30T10:00:00",
+    "updatedAt": "2026-06-30T10:00:00"
+  },
+  {
+    "id": 1719700002000,
+    "deck": "영어단어",
+    "baseWord": "apostasy",
+    "stages": [
+      {
+        "label": "결합어구/예문",
+        "fields": {
+          "headword": "apostasy",
+          "phonetic": "[uh-POS-tuh-see]",
+          "examples": [
+            "His apostasy from the church shocked his family."
+          ]
+        }
+      },
+      {
+        "label": "단어별 주석",
+        "fields": {
+          "entries": [
+            {
+              "word": "apostasy",
+              "difficulty": "L2",
+              "definition_en": "the abandonment or renunciation of a religious or political belief",
+              "gloss_kr": "변절"
+            }
+          ]
+        }
+      }
+    ],
+    "createdAt": "2026-06-30T10:30:00",
+    "updatedAt": "2026-06-30T10:30:00"
+  },
+  {
+    "id": 1719700003000,
+    "deck": "수학-수능기출",
+    "stages": [
+      {
+        "label": "문제",
+        "fields": {
+          "problem_img": "raw/images/2024_math_19.jpg"
+        }
+      },
+      {
+        "label": "해독/전략",
+        "fields": {
+          "analysis": "이 문제는 정적분의 정의를 묻는 문제입니다. 구간 [0,2]에서 함수 f(x)의 정적분을 구해야 합니다.",
+          "strategy": "부분적분을 활용하여 풀이합니다. u = f(x), dv = dx로 설정합니다."
+        }
+      },
+      {
+        "label": "풀이",
+        "fields": {
+          "solution_img": "raw/images/2024_math_19_sol.jpg"
+        }
+      },
+      {
+        "label": "정답/보충",
+        "fields": {
+          "answer": "③",
+          "pattern_note": "이 문제는 치환 적분과 부분적분이 결합된 패턴입니다. 2023학년도 21번과 유사한 구조입니다."
+        }
+      }
+    ],
+    "createdAt": "2026-06-30T11:00:00",
+    "updatedAt": "2026-06-30T11:00:00"
+  }
+]
