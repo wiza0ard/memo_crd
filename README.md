@@ -1,4 +1,4 @@
-# [프로젝트 이름]
+# [Flash-Card Memo System]
 
 > ⚠️ **중요: 이 프로젝트는 'No License' 정책을 따릅니다.**
 
