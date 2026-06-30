@@ -55,7 +55,6 @@ const GitHub = {
     try {
       return { data: JSON.parse(this.decode(content)), sha: meta.sha };
     } catch (e) {
-      // content가 잘렸을 경우 blob API로 재시도
       const blobRes = await fetch(
         `https://api.github.com/repos/${this.cfg.owner}/${GH_REPO}/git/blobs/${meta.sha}`,
         { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' } }
@@ -350,7 +349,7 @@ async function loadAllData(silent = false) {
     cardsData = cardsRes.notFound ? [] : cardsRes.data;
     scoresData = scoresRes.notFound ? {} : scoresRes.data;
     weeklyData = weeklyRes.notFound ? {} : weeklyRes.data;
-    schemasData = schemasRes.notFound ? {} : schemasRes.data;
+    schemasData = schemasRes.notFound ? getDefaultSchemas() : schemasRes.data;
 
     if (!silent) setSyncStatus('ok', `${cardsData.length}개 카드 로드됨`);
     return true;
@@ -361,13 +360,59 @@ async function loadAllData(silent = false) {
   }
 }
 
+function getDefaultSchemas() {
+  return {
+    "영어단어": {
+      stages: [
+        {
+          stage: 1,
+          label: "결합어구/예문",
+          fields: [
+            { key: "headword", label: "결합어구", type: "text", placeholder: "예: compensate for" },
+            { key: "phonetic", label: "발음기호", type: "text", placeholder: "[KOM-puhn-seyt fawr]" },
+            { key: "examples", label: "예문", type: "list-text", placeholder: "예문을 입력하세요" }
+          ]
+        },
+        {
+          stage: 2,
+          label: "단어별 주석",
+          fields: [
+            {
+              key: "entries",
+              label: "단어 주석 목록",
+              type: "list-entry",
+              subfields: [
+                { key: "word", label: "단어", type: "text" },
+                { key: "difficulty", label: "난이도", type: "select", options: ["L0", "L1", "L2", "L3", "Lx"] },
+                { key: "definition_en", label: "영문 뜻풀이", type: "textarea" },
+                { key: "gloss_kr", label: "한글 힌트", type: "text", placeholder: "어근 힌트 (예: 보상)" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "수학-수능기출": {
+      stages: [
+        { stage: 1, label: "문제", fields: [{ key: "problem_img", label: "문제 스냅샷", type: "image" }] },
+        { stage: 2, label: "해독/전략", fields: [{ key: "analysis", label: "문제 해독", type: "textarea" }, { key: "strategy", label: "풀이 전략", type: "textarea" }] },
+        { stage: 3, label: "풀이", fields: [{ key: "solution_img", label: "풀이 과정", type: "image" }] },
+        { stage: 4, label: "정답/보충", fields: [{ key: "answer", label: "정답", type: "text" }, { key: "pattern_note", label: "패턴/보충", type: "textarea" }] }
+      ]
+    }
+  };
+}
+
 // ===== 9. index.html 전용 =====
 let deckKeys = [];
 
 function initIndex() {
+  // 저장된 덱 복원
+  const savedDeck = localStorage.getItem('memo_crd_last_deck');
+  if (savedDeck) currentDeck = savedDeck;
+
   const cfg = GitHub.loadCfg();
   
-  // 설정 모달 관련 요소 확인
   const appEl = document.getElementById('app');
   const modalEl = document.getElementById('setup-modal');
   const saveBtn = document.getElementById('setup-save-btn');
@@ -377,13 +422,6 @@ function initIndex() {
     if (modalEl) modalEl.classList.remove('hidden');
     if (saveBtn) {
       saveBtn.addEventListener('click', saveSetup);
-    } else {
-      console.warn('setup-save-btn not found, will retry');
-      // 버튼이 없으면 DOM 로드 완료 후 재시도
-      setTimeout(() => {
-        const btn = document.getElementById('setup-save-btn');
-        if (btn) btn.addEventListener('click', saveSetup);
-      }, 100);
     }
     return;
   }
@@ -391,7 +429,7 @@ function initIndex() {
   if (modalEl) modalEl.classList.add('hidden');
   if (appEl) appEl.classList.remove('hidden');
 
-  // 이벤트 바인딩 (모든 요소가 존재하는지 확인)
+  // 이벤트 바인딩
   const elements = {
     nextBtn: document.getElementById('nextBtn'),
     prevBtn: document.getElementById('prevBtn'),
@@ -412,7 +450,6 @@ function initIndex() {
   if (elements.refreshBtn) elements.refreshBtn.addEventListener('click', () => { loadAllData(false).then(renderIndex); });
   if (elements.settingsBtn) elements.settingsBtn.addEventListener('click', openSetup);
 
-  // ★/❌ 버튼
   document.querySelectorAll('[data-action]').forEach(btn => {
     btn.addEventListener('click', function() {
       const action = this.dataset.action;
@@ -423,7 +460,6 @@ function initIndex() {
     });
   });
 
-  // 키보드 단축키
   document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     const key = e.key;
@@ -437,7 +473,6 @@ function initIndex() {
     else if (key === 'v' || key === 'V') { e.preventDefault(); copyCurrentWord(); }
   });
 
-  // 토큰 저장 버튼 (이미 바인딩됨)
   if (saveBtn) {
     saveBtn.addEventListener('click', saveSetup);
   }
@@ -446,7 +481,6 @@ function initIndex() {
     renderIndex();
   });
 
-  // visibilitychange 자동 동기화
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       loadAllData(true).then(() => renderIndex());
@@ -454,7 +488,6 @@ function initIndex() {
   });
 }
 
-// 렌더링: 덱 탭 + 현재 카드
 function renderIndex() {
   if (!cardsData.length) {
     document.getElementById('cardTitle').textContent = '📭 카드가 없습니다';
@@ -463,7 +496,6 @@ function renderIndex() {
     return;
   }
 
-  // 덱 목록 추출
   const decks = [...new Set(cardsData.map(c => c.deck || '기타'))];
   deckKeys = decks;
   const tabsEl = document.getElementById('deckTabs');
@@ -474,11 +506,11 @@ function renderIndex() {
     btn.addEventListener('click', function() {
       currentDeck = this.dataset.deck;
       currentIndex = 0;
+      localStorage.setItem('memo_crd_last_deck', currentDeck);
       renderIndex();
     });
   });
 
-  // 현재 덱의 카드 목록
   const deckCards = cardsData.filter(c => (c.deck || '기타') === currentDeck);
   if (!deckCards.length) {
     document.getElementById('cardTitle').textContent = '📭 이 덱에 카드가 없습니다';
@@ -493,24 +525,19 @@ function renderIndex() {
   currentCard = deckCards[currentIndex];
   const stages = currentCard.stages || [];
 
-  // 카드 렌더링
   renderCardFaces(stages);
 
-  // 정보 패널 업데이트
   const title = getCardTitle(currentCard);
   document.getElementById('cardTitle').textContent = title || '-';
   const sub = getCardSub(currentCard);
   document.getElementById('cardSub').textContent = sub || '';
 
-  // ★/❌ 표시
   const score = scoresData[currentCard.id] || { star: 0, x: 0 };
   document.getElementById('starDisplay').textContent = '★'.repeat(score.star || 0) + '☆'.repeat(5 - (score.star || 0));
   document.getElementById('xDisplay').textContent = '❌'.repeat(score.x || 0) + '○'.repeat(2 - (score.x || 0));
 
-  // 진행률
   document.getElementById('progressDisplay').textContent = `${currentIndex + 1} / ${deckCards.length}`;
 
-  // stage indicator
   const totalStages = stages.length || 1;
   const currentStage = Math.floor(((rotation / 180) % totalStages + totalStages) % totalStages);
   const indicator = document.getElementById('stageIndicator');
@@ -518,10 +545,8 @@ function renderIndex() {
     i === currentStage ? '●' : '○'
   ).join('');
 
-  // 통계
   updateFooterStats(deckCards);
 
-  // 카드 클릭 이벤트 (좌/우 분할)
   const cardEl = document.getElementById('flashCard');
   cardEl.onclick = null;
   cardEl.addEventListener('click', function(e) {
@@ -534,7 +559,6 @@ function renderIndex() {
     }
   });
 
-  // 터치 지원
   cardEl.addEventListener('touchstart', function(e) {
     const touch = e.touches[0];
     const rect = this.getBoundingClientRect();
@@ -557,8 +581,6 @@ function renderCardFaces(stages) {
     inner.innerHTML = `<div class="face empty-face">(내용 없음)</div>`;
     return;
   }
-  // 각 면은 backface-visibility: hidden으로 숨겨져 있고,
-  // 회전된 면만 보이게 됨
   inner.innerHTML = stages.map((stage, i) => {
     const fields = stage.fields || {};
     let content = '';
@@ -566,7 +588,6 @@ function renderCardFaces(stages) {
       if (Array.isArray(value)) {
         content += value.map(v => `<div class="field-item">${escHtml(v)}</div>`).join('');
       } else if (typeof value === 'object' && value !== null) {
-        // 이미지 경로인 경우 처리
         if (key.includes('img') || key.includes('image')) {
           content += `<div class="field-item"><img src="${escHtml(String(value))}" style="max-width:100%;max-height:200px;border-radius:4px;" onerror="this.style.display='none';this.nextElementSibling.style.display='block';"></div>`;
           content += `<div class="field-item" style="display:none;color:var(--text-muted);font-size:12px;">⚠️ 이미지 로드 실패: ${escHtml(String(value))}</div>`;
@@ -584,7 +605,6 @@ function renderCardFaces(stages) {
     </div>`;
   }).join('');
   
-  // rotation 적용
   const totalStages = stages.length || 1;
   applyRotation(totalStages);
 }
@@ -594,7 +614,6 @@ function getCardTitle(card) {
   const firstStage = card.stages[0];
   if (!firstStage.fields) return '-';
   const fields = firstStage.fields;
-  // 우선순위: headword > word > problem_img > 첫 번째 텍스트 필드
   if (fields.headword) return fields.headword;
   if (fields.word) return fields.word;
   if (fields.problem_img) return '📷 문제';
@@ -606,7 +625,6 @@ function getCardSub(card) {
   if (!card || !card.stages) return '';
   const parts = [];
   if (card.baseWord) parts.push(card.baseWord);
-  // 난이도 추출 (entries에서 첫 번째 difficulty)
   for (const stage of card.stages) {
     if (stage.fields && stage.fields.entries && Array.isArray(stage.fields.entries)) {
       const first = stage.fields.entries[0];
@@ -659,7 +677,6 @@ function getDeckCards() {
 function nextCard() {
   const deckCards = getDeckCards();
   if (!deckCards.length) { showToast('카드가 없습니다', true); return; }
-  // 가중치 랜덤 (★/❌ 반영)
   const weighted = deckCards.map(c => {
     const s = scoresData[c.id] || { star: 0, x: 0 };
     const weight = Math.max(0.1, 1.0 + (s.star || 0) * 2.0 - (s.x || 0) * 0.5);
@@ -692,11 +709,9 @@ function shuffleDeck() {
     const j = Math.floor(Math.random() * (i + 1));
     [deckCards[i], deckCards[j]] = [deckCards[j], deckCards[i]];
   }
-  // cardsData에서 해당 덱의 순서를 업데이트
   const allCards = cardsData.filter(c => (c.deck || '기타') !== currentDeck);
   const sorted = deckCards.map(c => c.id);
   cardsData = allCards.concat(deckCards);
-  // 순서 유지를 위해 cardsData 재정렬
   cardsData.sort((a, b) => {
     const ia = sorted.indexOf(a.id);
     const ib = sorted.indexOf(b.id);
@@ -814,7 +829,7 @@ function updateFooterStats(deckCards) {
 }
 
 // ===== 10. control.html 전용 =====
-let pendingAttachments = [];
+let formData = {};
 
 function initControl() {
   const cfg = GitHub.loadCfg();
@@ -823,11 +838,22 @@ function initControl() {
     return;
   }
 
+  // 저장된 탭 복원
+  const savedTab = localStorage.getItem('memo_crd_last_control_tab');
+  if (savedTab) {
+    document.querySelectorAll('.control-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.control-page').forEach(p => p.classList.remove('active'));
+    const tabBtn = document.querySelector(`.control-tab[data-tab="${savedTab}"]`);
+    if (tabBtn) {
+      tabBtn.classList.add('active');
+      document.getElementById(`tab-${savedTab}`).classList.add('active');
+    }
+  }
+
   loadAllData(false).then(() => {
     renderControl();
   });
 
-  // 이벤트 바인딩
   document.getElementById('deckSelect').addEventListener('change', function() {
     currentDeck = this.value;
     renderControl();
@@ -846,20 +872,18 @@ function initControl() {
       document.querySelectorAll('.control-tab').forEach(t => t.classList.remove('active'));
       this.classList.add('active');
       document.querySelectorAll('.control-page').forEach(p => p.classList.remove('active'));
-      document.getElementById(`tab-${this.dataset.tab}`).classList.add('active');
-      if (this.dataset.tab === 'search') doSearch();
+      const tabName = this.dataset.tab;
+      document.getElementById(`tab-${tabName}`).classList.add('active');
+      localStorage.setItem('memo_crd_last_control_tab', tabName);
+      if (tabName === 'search') doSearch();
     });
   });
-
-  // 설정 모달 (app.js에서 이미 정의됨)
 }
 
 function renderControl() {
-  // 덱 셀렉트
   const select = document.getElementById('deckSelect');
   const decks = [...new Set(cardsData.map(c => c.deck || '기타'))];
   if (!schemasData || Object.keys(schemasData).length === 0) {
-    // 기본 스키마 제공
     schemasData = getDefaultSchemas();
   }
   const allDecks = [...new Set([...Object.keys(schemasData), ...decks])];
@@ -867,56 +891,11 @@ function renderControl() {
     `<option value="${d}" ${d === currentDeck ? 'selected' : ''}>${d}</option>`
   ).join('');
 
-  // 새 카드 폼 렌더링
   renderNewCardForm();
 
-  // 검색 결과 초기화 (포커스 유지)
   if (document.getElementById('tab-search').classList.contains('active')) {
     doSearch();
   }
-}
-
-function getDefaultSchemas() {
-  return {
-    "영어단어": {
-      stages: [
-        {
-          stage: 1,
-          label: "결합어구/예문",
-          fields: [
-            { key: "headword", label: "결합어구", type: "text", placeholder: "예: compensate for" },
-            { key: "phonetic", label: "발음기호", type: "text", placeholder: "[KOM-puhn-seyt fawr]" },
-            { key: "examples", label: "예문", type: "list-text", placeholder: "예문을 입력하세요" }
-          ]
-        },
-        {
-          stage: 2,
-          label: "단어별 주석",
-          fields: [
-            {
-              key: "entries",
-              label: "단어 주석 목록",
-              type: "list-entry",
-              subfields: [
-                { key: "word", label: "단어", type: "text" },
-                { key: "difficulty", label: "난이도", type: "select", options: ["L0", "L1", "L2", "L3", "Lx"] },
-                { key: "definition_en", label: "영문 뜻풀이", type: "textarea" },
-                { key: "gloss_kr", label: "한글 힌트", type: "text", placeholder: "어근 힌트 (예: 보상)" }
-              ]
-            }
-          ]
-        }
-      ]
-    },
-    "수학-수능기출": {
-      stages: [
-        { stage: 1, label: "문제", fields: [{ key: "problem_img", label: "문제 스냅샷", type: "image" }] },
-        { stage: 2, label: "해독/전략", fields: [{ key: "analysis", label: "문제 해독", type: "textarea" }, { key: "strategy", label: "풀이 전략", type: "textarea" }] },
-        { stage: 3, label: "풀이", fields: [{ key: "solution_img", label: "풀이 과정", type: "image" }] },
-        { stage: 4, label: "정답/보충", fields: [{ key: "answer", label: "정답", type: "text" }, { key: "pattern_note", label: "패턴/보충", type: "textarea" }] }
-      ]
-    }
-  };
 }
 
 function renderNewCardForm() {
@@ -971,9 +950,6 @@ function renderField(field) {
   return html;
 }
 
-// list-text 항목 관리
-let formData = {};
-
 function addListTextItem(key) {
   const container = document.getElementById(`list-items-${key}`);
   if (!container) return;
@@ -990,7 +966,6 @@ function addListTextItem(key) {
 function addListEntryItem(key) {
   const container = document.getElementById(`list-items-${key}`);
   if (!container) return;
-  // 스키마에서 subfields 추출
   const schema = schemasData[currentDeck] || {};
   let subfields = [];
   for (const stage of (schema.stages || [])) {
@@ -1036,13 +1011,11 @@ function handleImageUpload(input, key) {
       <button onclick="this.parentElement.remove();document.getElementById('input-${key}').value=''" style="background:none;border:none;color:var(--accent-red);cursor:pointer;">✕</button>
     </div>
   `;
-  // 파일 저장
   if (!formData[key]) formData[key] = {};
   formData[key].file = file;
   formData[key].preview = url;
 }
 
-// 새 카드 저장
 async function saveNewCard() {
   const schema = schemasData[currentDeck] || { stages: [{ stage: 1, label: "내용", fields: [{ key: "content", label: "내용", type: "textarea" }] }] };
   const stages = [];
@@ -1099,7 +1072,6 @@ async function saveNewCard() {
     return;
   }
 
-  // 이미지 업로드 처리
   const qc = buildQcode(new Date());
   const id = Date.now();
   for (const stage of stages) {
@@ -1109,7 +1081,7 @@ async function saveNewCard() {
           const ext = 'jpg';
           const filename = `${qc}_${id}_${key}.${ext}`;
           await GitHub.uploadRaw(value.file, filename, true);
-          stage.fields[key] = `raw/images/${filename}`;
+          stage.fields[key] = `raw/${filename}`;
         } catch (e) {
           showToast(`이미지 업로드 실패: ${e.message}`, true);
           return;
@@ -1150,7 +1122,6 @@ function clearForm() {
   formData = {};
 }
 
-// 검색
 function doSearch() {
   const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
   const results = document.getElementById('searchResults');
@@ -1253,7 +1224,6 @@ function addNewDeck() {
     showToast('이미 존재하는 덱입니다.', true);
     return;
   }
-  // 기본 스키마 생성 (1단계, text 필드 1개)
   schemasData[trimmed] = {
     stages: [
       { stage: 1, label: "내용", fields: [{ key: "content", label: "내용", type: "textarea" }] }
@@ -1266,5 +1236,4 @@ function addNewDeck() {
 }
 
 // ===== 11. 페이지별 초기화 (외부에서 호출) =====
-// app.js 로드 후 index.html/control.html에서 각각 호출
 console.log('📚 memo_crd app.js 로드됨');
