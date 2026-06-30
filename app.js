@@ -553,10 +553,12 @@ function renderIndex() {
 
 function renderCardFaces(stages) {
   const inner = document.getElementById('cardInner');
-  if (!stages.length) {
-    inner.innerHTML = `<div class="face">(내용 없음)</div>`;
+  if (!stages || !stages.length) {
+    inner.innerHTML = `<div class="face empty-face">(내용 없음)</div>`;
     return;
   }
+  // 각 면은 backface-visibility: hidden으로 숨겨져 있고,
+  // 회전된 면만 보이게 됨
   inner.innerHTML = stages.map((stage, i) => {
     const fields = stage.fields || {};
     let content = '';
@@ -564,7 +566,13 @@ function renderCardFaces(stages) {
       if (Array.isArray(value)) {
         content += value.map(v => `<div class="field-item">${escHtml(v)}</div>`).join('');
       } else if (typeof value === 'object' && value !== null) {
-        content += `<div class="field-item">${escHtml(JSON.stringify(value))}</div>`;
+        // 이미지 경로인 경우 처리
+        if (key.includes('img') || key.includes('image')) {
+          content += `<div class="field-item"><img src="${escHtml(String(value))}" style="max-width:100%;max-height:200px;border-radius:4px;" onerror="this.style.display='none';this.nextElementSibling.style.display='block';"></div>`;
+          content += `<div class="field-item" style="display:none;color:var(--text-muted);font-size:12px;">⚠️ 이미지 로드 실패: ${escHtml(String(value))}</div>`;
+        } else {
+          content += `<div class="field-item">${escHtml(JSON.stringify(value))}</div>`;
+        }
       } else {
         content += `<div class="field-item">${escHtml(String(value))}</div>`;
       }
@@ -575,6 +583,10 @@ function renderCardFaces(stages) {
       <div class="face-content">${content || '(내용 없음)'}</div>
     </div>`;
   }).join('');
+  
+  // rotation 적용
+  const totalStages = stages.length || 1;
+  applyRotation(totalStages);
 }
 
 function getCardTitle(card) {
