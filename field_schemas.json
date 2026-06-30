@@ -1,0 +1,62 @@
+{
+  "difficulty_levels": {
+    "L0": "초등학생 기준 당연히 아는 단어",
+    "L1": "중학생 기준 당연히 아는 단어",
+    "L2": "고등학생 / SAT 평균 이하 난이도",
+    "L3": "대학 이상 지적 소양자가 당연히 아는 단어",
+    "Lx": "전문용어 / 고어 / 문어체 - 실생활과 동떨어진 단어"
+  },
+
+  "decks": {
+    "영어단어": {
+      "fixedStages": true,
+      "stages": [
+        {
+          "label": "결합어구 / 예문",
+          "fields": [
+            { "key": "headword",  "label": "결합어구 (예: compensate for)", "type": "text" },
+            { "key": "baseWord",  "label": "기본형 (검색용, 예: compensate)", "type": "text", "adminOnly": true },
+            { "key": "phonetic",  "label": "발음기호 (구글 포네틱)", "type": "text" },
+            { "key": "examples",  "label": "예문", "type": "list-text" }
+          ]
+        },
+        {
+          "label": "단어별 주석",
+          "fields": [
+            {
+              "key": "entries", "label": "단어 주석", "type": "list-entry",
+              "subfields": [
+                { "key": "word",          "label": "단어",       "type": "text" },
+                { "key": "difficulty",    "label": "레벨",       "type": "select", "options": ["L0","L1","L2","L3","Lx"] },
+                { "key": "definition_en", "label": "영문 뜻풀이", "type": "textarea" },
+                { "key": "hint_kr",       "label": "한글 힌트",  "type": "text" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+
+    "수학-수능기출": {
+      "fixedStages": false,
+      "stageTemplate": [
+        { "label": "문제",       "fields": [ { "key": "problem_img", "label": "문제 스냅샷", "type": "image" } ] },
+        { "label": "해독/전략",   "fields": [ { "key": "analysis", "label": "문제 해독", "type": "textarea" }, { "key": "strategy", "label": "풀이 전략", "type": "textarea" } ] },
+        { "label": "풀이",       "fields": [ { "key": "solution_img", "label": "풀이 과정 스냅샷", "type": "image" } ] },
+        { "label": "정답/패턴",   "fields": [ { "key": "answer", "label": "정답", "type": "text" }, { "key": "pattern_note", "label": "패턴 / 보충 (꼼수, 소거법 등)", "type": "textarea" } ] }
+      ],
+      "freeStageFields": [
+        { "key": "text",  "label": "텍스트", "type": "textarea" },
+        { "key": "image", "label": "이미지", "type": "image" }
+      ]
+    },
+
+    "문학발췌": {
+      "fixedStages": true,
+      "stages": [
+        { "label": "단서", "fields": [ { "key": "clue", "label": "단서 / 제목", "type": "text" } ] },
+        { "label": "전문", "fields": [ { "key": "full_text", "label": "전문", "type": "textarea" }, { "key": "author", "label": "저자/출처", "type": "text" } ] }
+      ]
+    }
+  }
+}

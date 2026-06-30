@@ -1,0 +1,182 @@
+[
+  {
+    "id": 1719700000001,
+    "deck": "영어단어",
+    "stages": [
+      {
+        "label": "결합어구 / 예문",
+        "fields": {
+          "headword": "compensate for",
+          "baseWord": "compensate",
+          "phonetic": "[KOM-puhn-seyt fawr]",
+          "examples": [
+            "No bonus can compensate for the stress of the job.",
+            "She worked overtime to compensate for the lost day."
+          ]
+        }
+      },
+      {
+        "label": "단어별 주석",
+        "fields": {
+          "entries": [
+            { "word": "compensate", "difficulty": "L1", "definition_en": "to provide something good as a balance against loss, damage, or imbalance", "hint_kr": "보상" },
+            { "word": "stress", "difficulty": "L1", "definition_en": "mental or emotional strain caused by demanding circumstances", "hint_kr": "스트레스" },
+            { "word": "overtime", "difficulty": "L2", "definition_en": "time spent working in addition to normal working hours", "hint_kr": "초과근무" }
+          ]
+        }
+      }
+    ],
+    "links": [],
+    "createdAt": "2026-06-28T09:00:00",
+    "updatedAt": "2026-06-28T09:00:00"
+  },
+  {
+    "id": 1719700000002,
+    "deck": "영어단어",
+    "stages": [
+      {
+        "label": "결합어구 / 예문",
+        "fields": {
+          "headword": "abide by",
+          "baseWord": "abide",
+          "phonetic": "[uh-BAHYD bahy]",
+          "examples": [
+            "All members must abide by the club rules.",
+            "The company refused to abide by the court's ruling."
+          ]
+        }
+      },
+      {
+        "label": "단어별 주석",
+        "fields": {
+          "entries": [
+            { "word": "abide", "difficulty": "L2", "definition_en": "to accept and act in accordance with a rule, decision, or recommendation", "hint_kr": "준수" },
+            { "word": "ruling", "difficulty": "L2", "definition_en": "an official decision made by a court or judge", "hint_kr": "판결" }
+          ]
+        }
+      }
+    ],
+    "links": [],
+    "createdAt": "2026-06-28T09:05:00",
+    "updatedAt": "2026-06-28T09:05:00"
+  },
+  {
+    "id": 1719700000003,
+    "deck": "영어단어",
+    "stages": [
+      {
+        "label": "결합어구 / 예문",
+        "fields": {
+          "headword": "a stark contrast",
+          "baseWord": "stark",
+          "phonetic": "[STAHRK KON-trast]",
+          "examples": [
+            "Her calm reply was a stark contrast to his panic.",
+            "The new building stands in stark contrast to the old town."
+          ]
+        }
+      },
+      {
+        "label": "단어별 주석",
+        "fields": {
+          "entries": [
+            { "word": "stark", "difficulty": "L3", "definition_en": "severe or bare in appearance; very obvious and unpleasant", "hint_kr": "극명한" },
+            { "word": "contrast", "difficulty": "L1", "definition_en": "a noticeable difference between two things", "hint_kr": "대조" }
+          ]
+        }
+      }
+    ],
+    "links": [],
+    "createdAt": "2026-06-28T09:10:00",
+    "updatedAt": "2026-06-28T09:10:00"
+  },
+  {
+    "id": 1719700000004,
+    "deck": "영어단어",
+    "stages": [
+      {
+        "label": "결합어구 / 예문",
+        "fields": {
+          "headword": "apostasy",
+          "baseWord": "apostasy",
+          "phonetic": "[uh-POS-tuh-see]",
+          "examples": [
+            "His apostasy shocked the party he had served for decades.",
+            "The act was condemned as apostasy by the church elders."
+          ]
+        }
+      },
+      {
+        "label": "단어별 주석",
+        "fields": {
+          "entries": [
+            { "word": "apostasy", "difficulty": "Lx", "definition_en": "the abandonment or renunciation of a belief, party, or cause one previously held", "hint_kr": "변절" }
+          ]
+        }
+      }
+    ],
+    "links": [],
+    "createdAt": "2026-06-28T09:15:00",
+    "updatedAt": "2026-06-28T09:15:00"
+  },
+
+  {
+    "id": 1719700001001,
+    "deck": "수학-수능기출",
+    "stages": [
+      { "label": "문제",     "fields": { "problem_img": "raw/images/2024_19.png" } },
+      { "label": "해독/전략", "fields": { "analysis": "치환 후 극값 조건을 적용하는 전형적 도함수 문제.", "strategy": "t = f(x)로 치환 → t에 대한 부등식으로 변환 후 그래프 개형 분석." } },
+      { "label": "풀이",     "fields": { "solution_img": "raw/images/2024_19_sol.png" } },
+      { "label": "정답/패턴", "fields": { "answer": "③", "pattern_note": "도함수 부호 변화로 극값 판정하는 패턴. 같은 치환 패턴이 2022, 2020 기출에도 반복됨." } }
+    ],
+    "links": [
+      { "targetId": 1719700001002, "note": "동일 치환 패턴의 변형 문제" }
+    ],
+    "createdAt": "2026-06-29T10:00:00",
+    "updatedAt": "2026-06-29T10:00:00"
+  },
+  {
+    "id": 1719700001002,
+    "deck": "수학-수능기출",
+    "stages": [
+      { "label": "문제",     "fields": { "problem_img": "raw/images/2022_15.png" } },
+      { "label": "해독/전략", "fields": { "analysis": "조건이 두 개로 분리된 함수의 합성 문제.", "strategy": "구간을 나눠 각 조건에서 함숫값 후보를 먼저 좁힌 뒤 대입." } },
+      { "label": "풀이",     "fields": { "solution_img": "raw/images/2022_15_sol.png" } },
+      { "label": "정답/패턴", "fields": { "answer": "12", "pattern_note": "" } },
+      { "label": "보충: 객관식 소거 전략", "fields": { "text": "선지가 있는 변형이라면, x=0과 x=1처럼 계산이 쉬운 값부터 대입해 절반 이상의 선지를 먼저 소거하는 게 시간 절약에 유리." } }
+    ],
+    "links": [
+      { "targetId": 1719700001001, "note": "원조 문제로 돌아가기" }
+    ],
+    "createdAt": "2026-06-29T10:10:00",
+    "updatedAt": "2026-06-29T10:10:00"
+  },
+  {
+    "id": 1719700001003,
+    "deck": "수학-수능기출",
+    "stages": [
+      { "label": "문제",     "fields": { "problem_img": "raw/images/2023_21.png" } },
+      { "label": "해독/전략", "fields": { "analysis": "수열의 귀납적 정의 + 극한 조건이 결합된 고난도 문제.", "strategy": "일반항을 직접 구하려 하지 말고, 극한 조건을 먼저 활용해 가능한 첫째항 후보를 제한할 것." } },
+      { "label": "풀이",     "fields": { "solution_img": "raw/images/2023_21_sol.png" } },
+      { "label": "정답/패턴", "fields": { "answer": "65", "pattern_note": "극한 존재 조건으로 후보를 먼저 줄이는 21번 단골 패턴." } }
+    ],
+    "links": [],
+    "createdAt": "2026-06-29T10:20:00",
+    "updatedAt": "2026-06-29T10:20:00"
+  },
+
+  {
+    "id": 1719700002001,
+    "deck": "문학발췌",
+    "stages": [
+      { "label": "단서", "fields": { "clue": "Frost - 가지 않은 길의 마지막 연" } },
+      { "label": "전문", "fields": {
+        "full_text": "I shall be telling this with a sigh\nSomewhere ages and ages hence:\nTwo roads diverged in a wood, and I—\nI took the one less traveled by,\nAnd that has made all the difference.",
+        "author": "Robert Frost, \"The Road Not Taken\""
+      } }
+    ],
+    "links": [],
+    "createdAt": "2026-06-29T11:00:00",
+    "updatedAt": "2026-06-29T11:00:00"
+  }
+]

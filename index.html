@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>memo_crd</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- 설정 모달 -->
+<div id="setup-modal" class="modal-overlay">
+  <div class="modal-box">
+    <h2>🔑 GitHub 연동 설정</h2>
+    <p class="modal-desc">
+      읽기/쓰기 권한이 있는 Fine-grained 토큰을 입력하면 <code>memo_crd</code> 저장소에 연결됩니다.<br>
+      토큰은 이 기기의 브라우저에만 저장됩니다.
+    </p>
+    <label class="field-label">GitHub 사용자명</label>
+    <input id="input-owner" class="field-input" type="text" placeholder="예: m1lion">
+    <div style="height:10px"></div>
+    <label class="field-label">Personal Access Token</label>
+    <input id="input-token" class="field-input" type="password" placeholder="github_pat_...">
+    <p class="modal-hint">
+      Repository access: <b>memo_crd</b> 저장소만 선택 →
+      Repository permissions &gt; Contents &gt; <b>Read and write</b>
+    </p>
+    <div class="btn-row">
+      <button id="setup-save-btn" class="btn btn-accent">저장하고 시작</button>
+    </div>
+    <p id="setup-error" class="modal-err"></p>
+  </div>
+</div>
+
+<header class="app-header">
+  <div class="header-inner">
+    <span class="app-title">memo_crd</span>
+    <div class="header-right">
+      <span id="sync-text" class="sync-text"></span>
+      <button id="refresh-btn" class="icon-btn" title="새로고침">↻</button>
+      <a href="control.html" class="icon-btn" title="카드 관리" style="text-decoration:none">⚙️</a>
+    </div>
+  </div>
+</header>
+
+<!-- deck 선택 화면 -->
+<div id="deck-screen" class="page hidden">
+  <div id="deck-grid" class="deck-grid"></div>
+</div>
+
+<!-- 학습 화면 -->
+<div id="study-screen" class="page hidden">
+  <button class="row-act-btn" id="back-to-decks" style="margin-bottom:10px">← deck 목록</button>
+  <div class="study-bar">
+    <span id="deck-label"></span>
+    <span id="progress-label"></span>
+  </div>
+
+  <div class="card-stage" id="card-stage">
+    <div class="card-inner" id="card-inner"></div>
+    <div class="click-zones">
+      <div class="zone zone-left"></div>
+      <div class="zone zone-right"></div>
+    </div>
+  </div>
+
+  <div class="stage-dots" id="stage-dots"></div>
+  <div class="nav-hint"><span>‹ 이전 면</span><span>다음 면 ›</span></div>
+
+  <div id="links-row" class="links-row"></div>
+
+  <div class="controls-row">
+    <div class="btn-group">
+      <button class="btn-pill star-btn" data-act="star+">★+</button>
+      <button class="btn-pill star-btn" data-act="star-">★-</button>
+      <button class="btn-pill x-btn" data-act="x+">❌+</button>
+      <button class="btn-pill x-btn" data-act="x-">❌-</button>
+    </div>
+    <span id="score-display" style="font-size:12px;color:var(--text3)"></span>
+  </div>
+
+  <button id="next-card-btn" class="btn-next">▶ 다음 카드</button>
+</div>
+
+<div id="toast-container" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:300"></div>
+
+<script src="gh-api.js"></script>
+<script>
+let cards = [];
+let scores = {};
+let schemas = null;
+let currentDeck = null;
+let deckCards = [];
+let cardIdx = 0;
+let rotation = 0;
+let stageCount = 1;
+
+function toast(msg, isError=false){
+  const c = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.style.cssText = `background:var(--surface);border:1px solid ${isError?'var(--red)':'var(--border2)'};color:${isError?'var(--red)':'var(--text)'};padding:9px 16px;border-radius:10px;font-size:13px;margin-top:8px`;
+  el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(()=>el.remove(), 2500);
+}
+
+// ===== 초기화 =====
+async function init(){
+  if (!hasAuth()){
+    document.getElementById('setup-modal').classList.add('open');
+    return;
+  }
+  await loadAll();
+}
+
+async function loadAll(){
+  document.getElementById('sync-text').textContent = '불러오는 중...';
+  try{
+    const [cardsRes, scoresRes, schemaRes] = await Promise.all([
+      ghGetJson('cards.json'),
+      ghGetJson('scores.json'),
+      ghGetJson('field_schemas.json')
+    ]);
+    cards = cardsRes.data || [];
+    scores = scoresRes.data || {};
+    schemas = schemaRes.data || {decks:{}};
+    document.getElementById('sync-text').textContent = '';
+    showDeckScreen();
+  }catch(e){
+    document.getElementById('sync-text').textContent = '';
+    toast('불러오기 실패: ' + e.message, true);
+  }
+}
+
+// ===== deck 화면 =====
+function showDeckScreen(){
+  document.getElementById('study-screen').classList.add('hidden');
+  document.getElementById('deck-screen').classList.remove('hidden');
+  const decks = {};
+  cards.forEach(c=>{ decks[c.deck] = (decks[c.deck]||0) + 1; });
+  const grid = document.getElementById('deck-grid');
+  if (!Object.keys(decks).length){
+    grid.innerHTML = '<div class="empty">카드가 없습니다. control.html에서 추가해 보세요.</div>';
+    return;
+  }
+  grid.innerHTML = Object.keys(decks).map(d=>`
+    <div class="deck-card" data-deck="${escAttr(d)}">
+      <span class="deck-name">${esc(d)}</span>
+      <span class="deck-count">${decks[d]}장</span>
+    </div>`).join('');
+  grid.querySelectorAll('.deck-card').forEach(el=>{
+    el.addEventListener('click', ()=>startDeck(el.dataset.deck));
+  });
+}
+
+function startDeck(deckName){
+  currentDeck = deckName;
+  deckCards = cards.filter(c=>c.deck===deckName);
+  shuffle(deckCards);
+  cardIdx = 0;
+  document.getElementById('deck-screen').classList.add('hidden');
+  document.getElementById('study-screen').classList.remove('hidden');
+  document.getElementById('deck-label').textContent = deckName;
+  renderCard();
+}
+
+function shuffle(arr){
+  for(let i=arr.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]]=[arr[j],arr[i]];
+  }
+}
+
+// ===== 카드 렌더링 =====
+function renderCard(){
+  if (!deckCards.length) return;
+  const card = deckCards[cardIdx];
+  stageCount = card.stages.length;
+  rotation = 0;
+
+  const inner = document.getElementById('card-inner');
+  inner.style.transition = 'none';
+  inner.style.transform = 'rotateY(0deg)';
+  inner.innerHTML = card.stages.map((st, i)=>{
+    const offset = i * 180;
+    return `<div class="face" style="transform:rotateY(${offset}deg)">
+      <div class="face-label">${esc(st.label || ('면 '+(i+1)))}</div>
+      ${renderStageFields(st.fields)}
+    </div>`;
+  }).join('');
+  void inner.offsetWidth;
+  inner.style.transition = '';
+
+  document.getElementById('progress-label').textContent = `${cardIdx+1} / ${deckCards.length}`;
+  renderDots(0);
+  renderLinks(card);
+  renderScore(card.id);
+}
+
+function renderStageFields(fields){
+  let html = '';
+  for (const key in fields){
+    const val = fields[key];
+    html += renderField(key, val);
+  }
+  return html;
+}
+
+function renderField(key, val){
+  if (val === '' || val == null) return '';
+  if (key === 'headword') return `<div class="f-headword">${esc(val)}</div>`;
+  if (key === 'baseWord') return '';
+  if (key === 'phonetic') return `<div class="f-phonetic">${esc(val)}</div>`;
+  if (key === 'examples' && Array.isArray(val)){
+    return `<div class="f-examples">${val.map(e=>`<div class="f-example">${esc(e)}</div>`).join('')}</div>`;
+  }
+  if (key === 'entries' && Array.isArray(val)){
+    return val.map(en=>`
+      <div class="f-entry">
+        <div class="f-entry-head">
+          <span class="f-entry-word">${esc(en.word||'')}</span>
+          ${en.difficulty?`<span class="f-entry-level">${esc(en.difficulty)}</span>`:''}
+        </div>
+        ${en.definition_en?`<div class="f-entry-en">${esc(en.definition_en)}</div>`:''}
+        ${en.hint_kr?`<div class="f-entry-kr">${esc(en.hint_kr)}</div>`:''}
+      </div>`).join('');
+  }
+  if (/img|image/i.test(key)){
+    return `<img class="f-image" src="${escAttr(val)}" alt="" loading="lazy">`;
+  }
+  if (/audio/i.test(key)){
+    return `<audio class="f-audio" controls src="${escAttr(val)}"></audio>`;
+  }
+  if (/pdf/i.test(key)){
+    return `<a class="f-pdf-link" href="${escAttr(val)}" target="_blank">📄 PDF 열기</a>`;
+  }
+  // 일반 텍스트/textarea 필드
+  return `<div class="f-text">${esc(val)}</div>`;
+}
+
+function renderDots(activeIdx){
+  const wrap = document.getElementById('stage-dots');
+  wrap.innerHTML = '';
+  for(let i=0;i<stageCount;i++){
+    const d = document.createElement('span');
+    d.className = 'stage-dot' + (i===activeIdx?' active':'');
+    wrap.appendChild(d);
+  }
+}
+
+function renderLinks(card){
+  const wrap = document.getElementById('links-row');
+  const links = card.links || [];
+  if (!links.length){ wrap.innerHTML=''; return; }
+  wrap.innerHTML = links.map(l=>{
+    const t = cards.find(c=>c.id===l.targetId);
+    const label = t ? (t.stages[0]?.fields?.headword || t.stages[0]?.fields?.clue || ('#'+t.id)) : '?';
+    return `<span class="link-chip" data-target="${l.targetId}">🔗 ${esc(l.note||label)}</span>`;
+  }).join('');
+  wrap.querySelectorAll('.link-chip').forEach(el=>{
+    el.addEventListener('click', ()=>jumpToCard(Number(el.dataset.target)));
+  });
+}
+
+function jumpToCard(id){
+  const target = cards.find(c=>c.id===id);
+  if (!target) return toast('연결된 카드를 찾을 수 없습니다.', true);
+  currentDeck = target.deck;
+  deckCards = cards.filter(c=>c.deck===target.deck);
+  cardIdx = deckCards.findIndex(c=>c.id===id);
+  document.getElementById('deck-label').textContent = currentDeck;
+  renderCard();
+}
+
+function renderScore(cardId){
+  const s = scores[cardId] || {star:0, x:0};
+  document.getElementById('score-display').textContent = `★${s.star||0}  ❌${s.x||0}`;
+}
+
+// ===== 플립 =====
+function flip(dir){
+  rotation += dir * 180;
+  document.getElementById('card-inner').style.transform = `rotateY(${rotation}deg)`;
+  const idx = (((rotation/180) % stageCount) + stageCount) % stageCount;
+  renderDots(idx);
+}
+
+document.getElementById('card-stage').addEventListener('click', (e)=>{
+  const rect = e.currentTarget.getBoundingClientRect();
+  const cx = rect.left + rect.width/2;
+  flip(e.clientX > cx ? 1 : -1);
+});
+
+document.getElementById('next-card-btn').addEventListener('click', ()=>{
+  cardIdx = (cardIdx+1) % deckCards.length;
+  renderCard();
+});
+document.getElementById('back-to-decks').addEventListener('click', showDeckScreen);
+
+// ===== 점수 =====
+let scoreTimer = null;
+document.querySelectorAll('[data-act]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const card = deckCards[cardIdx];
+    if (!card) return;
+    const s = scores[card.id] || {star:0, x:0};
+    const act = btn.dataset.act;
+    if (act==='star+') s.star = (s.star||0)+1;
+    if (act==='star-') s.star = Math.max(0,(s.star||0)-1);
+    if (act==='x+') s.x = (s.x||0)+1;
+    if (act==='x-') s.x = Math.max(0,(s.x||0)-1);
+    scores[card.id] = s;
+    renderScore(card.id);
+    clearTimeout(scoreTimer);
+    scoreTimer = setTimeout(()=>{
+      ghPutJson('scores.json', scores, 'update scores').then(()=>{
+        document.getElementById('sync-text').textContent='';
+      }).catch(e=>toast('점수 저장 실패: '+e.message, true));
+      document.getElementById('sync-text').textContent='저장중...';
+    }, 1500);
+  });
+});
+
+// ===== 설정 모달 =====
+document.getElementById('setup-save-btn').addEventListener('click', async ()=>{
+  const owner = document.getElementById('input-owner').value.trim();
+  const token = document.getElementById('input-token').value.trim();
+  const errEl = document.getElementById('setup-error');
+  errEl.style.display='none';
+  if (!owner || !token){ errEl.textContent='사용자명과 토큰을 모두 입력하세요.'; errEl.style.display='block'; return; }
+  try{
+    await verifyAccess(owner, token);
+    setAuth(owner, token);
+    document.getElementById('setup-modal').classList.remove('open');
+    await loadAll();
+  }catch(e){
+    errEl.textContent = e.message;
+    errEl.style.display='block';
+  }
+});
+
+document.getElementById('refresh-btn').addEventListener('click', loadAll);
+
+function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escAttr(s){ return esc(s); }
+
+init();
+</script>
+</body>
+</html>

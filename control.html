@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>memo_crd · control</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="setup-modal" class="modal-overlay">
+  <div class="modal-box">
+    <h2>🔑 GitHub 연동 설정</h2>
+    <p class="modal-desc">읽기/쓰기 권한이 있는 Fine-grained 토큰을 입력하세요.</p>
+    <label class="field-label">GitHub 사용자명</label>
+    <input id="input-owner" class="field-input" type="text">
+    <div style="height:10px"></div>
+    <label class="field-label">Personal Access Token</label>
+    <input id="input-token" class="field-input" type="password" placeholder="github_pat_...">
+    <div class="btn-row"><button id="setup-save-btn" class="btn btn-accent">저장하고 시작</button></div>
+    <p id="setup-error" class="modal-err"></p>
+  </div>
+</div>
+
+<header class="app-header">
+  <div class="header-inner">
+    <a href="index.html" class="icon-btn" style="text-decoration:none">← 메인</a>
+    <span class="app-title">카드 관리</span>
+    <div class="header-right">
+      <span id="sync-text" class="sync-text"></span>
+      <button id="refresh-btn" class="icon-btn" title="새로고침">↻</button>
+    </div>
+  </div>
+</header>
+
+<nav class="tab-bar">
+  <div class="tab-inner">
+    <button class="tab-btn active" data-tab="new">새 카드</button>
+    <button class="tab-btn" data-tab="search">검색 / 관리</button>
+  </div>
+</nav>
+
+<!-- ===== 새 카드 ===== -->
+<div id="tab-new" class="page">
+  <div class="field-block">
+    <label class="field-label">Deck</label>
+    <select id="deck-select" class="field-select"></select>
+  </div>
+  <div id="new-stage-container"></div>
+  <button type="button" id="add-stage-new" class="list-add-btn">+ 면 추가</button>
+  <div class="btn-row">
+    <button id="save-new-btn" class="btn btn-accent">카드 저장</button>
+  </div>
+  <div id="new-upload-progress" class="field-hint"></div>
+</div>
+
+<!-- ===== 검색/관리 ===== -->
+<div id="tab-search" class="page hidden">
+  <input id="search-input" class="search-input" type="text" placeholder="결합어구, 단서, 본문 등으로 검색...">
+  <div id="search-result-label" class="search-result-label"></div>
+  <div id="search-results"></div>
+</div>
+
+<div id="toast-container" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:300"></div>
+
+<script src="gh-api.js"></script>
+<script>
+let cards = [];
+let scores = {};
+let schemas = { decks:{}, difficulty_levels:{} };
+let FIELD_LABELS = {};
+const pendingFiles = new Map(); // fileInputEl -> File
+
+function toast(msg, isError=false){
+  const c = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.style.cssText = `background:var(--surface);border:1px solid ${isError?'var(--red)':'var(--border2)'};color:${isError?'var(--red)':'var(--text)'};padding:9px 16px;border-radius:10px;font-size:13px;margin-top:8px`;
+  el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(()=>el.remove(), 2800);
+}
+function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ===== 초기화 =====
+async function init(){
+  if (!hasAuth()){ document.getElementById('setup-modal').classList.add('open'); return; }
+  await loadAll();
+}
+async function loadAll(){
+  document.getElementById('sync-text').textContent = '불러오는 중...';
+  try{
+    const [c,s,f] = await Promise.all([ghGetJson('cards.json'), ghGetJson('scores.json'), ghGetJson('field_schemas.json')]);
+    cards = c.data || [];
+    scores = s.data || {};
+    schemas = f.data || { decks:{}, difficulty_levels:{} };
+    buildFieldLabelIndex();
+    document.getElementById('sync-text').textContent = '';
+    populateDeckSelect();
+    renderNewForm();
+    doSearch();
+  }catch(e){
+    document.getElementById('sync-text').textContent = '';
+    toast('불러오기 실패: ' + e.message, true);
+  }
+}
+function buildFieldLabelIndex(){
+  FIELD_LABELS = {};
+  Object.values(schemas.decks||{}).forEach(d=>{
+    const stageLists = [d.stages, d.stageTemplate].filter(Boolean);
+    stageLists.forEach(list=>list.forEach(st=>st.fields.forEach(f=>{ FIELD_LABELS[f.key]=f.label; })));
+  });
+}
+function difficultyOptions(){ return Object.keys(schemas.difficulty_levels||{L0:1,L1:1,L2:1,L3:1,Lx:1}); }
+
+// ===== 탭 전환 =====
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-new').classList.toggle('hidden', btn.dataset.tab!=='new');
+    document.getElementById('tab-search').classList.toggle('hidden', btn.dataset.tab!=='search');
+  });
+});
+
+// ================== 필드 렌더링 (공용) ==================
+function fieldDefEmpty(f){
+  let value = '';
+  if (f.type==='select') value = (f.options||difficultyOptions())[0];
+  if (f.type==='list-text' || f.type==='list-entry') value = [];
+  return { key:f.key, label:f.label, type:f.type, value, options:f.options, subfields:f.subfields };
+}
+
+function fieldBlockHTML(fd){
+  const { key, label, type, value, options, subfields } = fd;
+  if (type==='text')
+    return `<div class="field-block" data-key="${key}" data-type="text"><label class="field-label">${esc(label)}</label><input class="field-input" type="text" value="${esc(value||'')}"></div>`;
+  if (type==='textarea')
+    return `<div class="field-block" data-key="${key}" data-type="textarea"><label class="field-label">${esc(label)}</label><textarea class="field-textarea">${esc(value||'')}</textarea></div>`;
+  if (type==='select'){
+    const opts = options || difficultyOptions();
+    return `<div class="field-block" data-key="${key}" data-type="select"><label class="field-label">${esc(label)}</label><select class="field-select">${opts.map(o=>`<option value="${o}" ${o===value?'selected':''}>${o}</option>`).join('')}</select></div>`;
+  }
+  if (type==='image' || type==='audio' || type==='pdf'){
+    const accept = type==='image'?'image/*':type==='audio'?'audio/*':'application/pdf';
+    return `<div class="field-block" data-key="${key}" data-type="${type}">
+      <label class="field-label">${esc(label)}</label>
+      <div class="attach-bar"><label class="attach-btn">📎 파일 선택<input type="file" class="file-input" accept="${accept}"></label></div>
+      <div class="attach-preview" data-existing="${esc(value||'')}">${value?esc(value):'선택된 파일 없음'}</div>
+    </div>`;
+  }
+  if (type==='list-text'){
+    const items = Array.isArray(value)?value:[];
+    return `<div class="field-block" data-key="${key}" data-type="list-text">
+      <label class="field-label">${esc(label)}</label>
+      <div class="list-text-wrap">${items.map(v=>listTextRowHTML(v)).join('')}</div>
+      <button type="button" class="list-add-btn" data-act="add-text-row">+ 추가</button>
+    </div>`;
+  }
+  if (type==='list-entry'){
+    const entries = Array.isArray(value)?value:[];
+    const sub = subfields || [
+      {key:'word',label:'단어',type:'text'},
+      {key:'difficulty',label:'레벨',type:'select',options:difficultyOptions()},
+      {key:'definition_en',label:'영문 뜻풀이',type:'textarea'},
+      {key:'hint_kr',label:'한글 힌트',type:'text'}
+    ];
+    return `<div class="field-block" data-key="${key}" data-type="list-entry" data-subfields='${esc(JSON.stringify(sub))}'>
+      <label class="field-label">${esc(label)}</label>
+      <div class="list-entry-wrap">${entries.map(en=>entryBoxHTML(en, sub)).join('')}</div>
+      <button type="button" class="list-add-btn" data-act="add-entry-box">+ 단어 추가</button>
+    </div>`;
+  }
+  return '';
+}
+
+function listTextRowHTML(v=''){
+  return `<div class="list-item-row"><input class="field-input list-text-item" type="text" value="${esc(v)}"><button type="button" class="list-remove-btn" data-act="remove-row">✕</button></div>`;
+}
+
+function entryBoxHTML(en={}, subfieldDefs){
+  return `<div class="entry-box">
+    <div class="entry-box-head"><span class="entry-box-title">단어 항목</span><button type="button" class="list-remove-btn" data-act="remove-entry">✕</button></div>
+    ${subfieldDefs.map(sf=>{
+      if (sf.type==='select'){
+        const opts = sf.options || difficultyOptions();
+        return `<div style="margin-bottom:6px"><label class="field-label">${esc(sf.label)}</label><select class="field-select" data-subkey="${sf.key}">${opts.map(o=>`<option value="${o}" ${o===en[sf.key]?'selected':''}>${o}</option>`).join('')}</select></div>`;
+      }
+      if (sf.type==='textarea')
+        return `<div style="margin-bottom:6px"><label class="field-label">${esc(sf.label)}</label><textarea class="field-textarea" data-subkey="${sf.key}">${esc(en[sf.key]||'')}</textarea></div>`;
+      return `<div style="margin-bottom:6px"><label class="field-label">${esc(sf.label)}</label><input class="field-input" type="text" data-subkey="${sf.key}" value="${esc(en[sf.key]||'')}"></div>`;
+    }).join('')}
+  </div>`;
+}
+
+function stageCardHTML(stageIdx, stage){
+  return `<div class="stage-card" data-stage-idx="${stageIdx}">
+    <div class="stage-card-head">
+      <input class="field-input stage-label-input" style="font-weight:600;color:var(--accent);max-width:240px" type="text" value="${esc(stage.label||'')}">
+      <button type="button" class="stage-del-btn" data-act="del-stage">면 삭제</button>
+    </div>
+    <div class="stage-fields">${stage.fields.map(fieldBlockHTML).join('')}</div>
+  </div>`;
+}
+
+// 컨테이너 전체에 대한 공용 이벤트 위임 (추가/삭제/파일선택)
+function wireStageEvents(container){
+  container.addEventListener('click', (e)=>{
+    const act = e.target.dataset && e.target.dataset.act;
+    if (!act) return;
+    if (act==='add-text-row'){
+      const wrap = e.target.previousElementSibling;
+      wrap.insertAdjacentHTML('beforeend', listTextRowHTML(''));
+    } else if (act==='remove-row'){
+      e.target.closest('.list-item-row').remove();
+    } else if (act==='add-entry-box'){
+      const fieldBlock = e.target.closest('.field-block');
+      const sub = JSON.parse(fieldBlock.dataset.subfields.replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,'&'));
+      fieldBlock.querySelector('.list-entry-wrap').insertAdjacentHTML('beforeend', entryBoxHTML({}, sub));
+    } else if (act==='remove-entry'){
+      e.target.closest('.entry-box').remove();
+    } else if (act==='del-stage'){
+      if (container.querySelectorAll('.stage-card').length<=1){ toast('최소 한 면은 있어야 합니다.', true); return; }
+      e.target.closest('.stage-card').remove();
+    }
+  });
+  container.addEventListener('change', (e)=>{
+    if (e.target.classList.contains('file-input')){
+      const file = e.target.files[0];
+      if (!file) return;
+      pendingFiles.set(e.target, file);
+      const preview = e.target.closest('.field-block').querySelector('.attach-preview');
+      preview.textContent = `(업로드 예정) ${file.name}`;
+    }
+  });
+}
+
+// 폼에서 stages 배열 읽기 + 파일 업로드 수행
+async function collectStages(container, deckSlug, progressEl){
+  const stageEls = [...container.querySelectorAll('.stage-card')];
+  const stages = [];
+  for (let i=0;i<stageEls.length;i++){
+    const se = stageEls[i];
+    const label = se.querySelector('.stage-label-input').value.trim() || `면 ${i+1}`;
+    const fields = {};
+    const blocks = [...se.querySelectorAll('.field-block')];
+    for (const fb of blocks){
+      const key = fb.dataset.key;
+      const type = fb.dataset.type;
+      if (type==='text') fields[key] = fb.querySelector('input').value.trim();
+      else if (type==='textarea') fields[key] = fb.querySelector('textarea').value.trim();
+      else if (type==='select') fields[key] = fb.querySelector('select').value;
+      else if (type==='list-text'){
+        const vals = [...fb.querySelectorAll('.list-text-item')].map(i=>i.value.trim()).filter(Boolean);
+        fields[key] = vals;
+      } else if (type==='list-entry'){
+        const boxes = [...fb.querySelectorAll('.entry-box')];
+        fields[key] = boxes.map(box=>{
+          const obj = {};
+          box.querySelectorAll('[data-subkey]').forEach(el=>{ obj[el.dataset.subkey] = el.value.trim(); });
+          return obj;
+        }).filter(o=>Object.values(o).some(v=>v));
+      } else if (type==='image' || type==='audio' || type==='pdf'){
+        const inputEl = fb.querySelector('.file-input');
+        if (pendingFiles.has(inputEl)){
+          const file = pendingFiles.get(inputEl);
+          if (progressEl) progressEl.textContent = `업로드 중: ${file.name}`;
+          const ext = (file.name.match(/\.([a-zA-Z0-9]+)$/)||[,'bin'])[1].toLowerCase();
+          const filename = `${deckSlug}_${key}_${Date.now()}.${ext}`;
+          const path = await uploadRawFile(file, rawFileSubdir(type), filename);
+          fields[key] = path;
+          pendingFiles.delete(inputEl);
+        } else {
+          fields[key] = fb.querySelector('.attach-preview').dataset.existing || '';
+        }
+      }
+    }
+    stages.push({ label, fields });
+  }
+  if (progressEl) progressEl.textContent = '';
+  return stages;
+}
+
+function slugify(s){ return String(s).replace(/[^a-zA-Z0-9가-힣]+/g,'_').slice(0,20); }
+
+// ================== 새 카드 탭 ==================
+function populateDeckSelect(){
+  const sel = document.getElementById('deck-select');
+  sel.innerHTML = Object.keys(schemas.decks).map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('');
+  sel.onchange = renderNewForm;
+}
+function renderNewForm(){
+  const deckName = document.getElementById('deck-select').value;
+  const deckDef = schemas.decks[deckName];
+  const container = document.getElementById('new-stage-container');
+  if (!deckDef){ container.innerHTML=''; return; }
+  const stageDefs = (deckDef.fixedStages ? deckDef.stages : deckDef.stageTemplate) || [];
+  const stages = stageDefs.map(s=>({ label: s.label, fields: s.fields.map(fieldDefEmpty) }));
+  container.innerHTML = stages.map((s,i)=>stageCardHTML(i, s)).join('');
+  wireStageEvents(container);
+}
+document.getElementById('add-stage-new').addEventListener('click', ()=>{
+  const container = document.getElementById('new-stage-container');
+  const idx = container.querySelectorAll('.stage-card').length;
+  const generic = { label:'새 면', fields:[ fieldDefEmpty({key:'text',label:'텍스트',type:'textarea'}), fieldDefEmpty({key:'image',label:'이미지',type:'image'}) ] };
+  container.insertAdjacentHTML('beforeend', stageCardHTML(idx, generic));
+});
+wireStageEvents(document.getElementById('new-stage-container'));
+
+document.getElementById('save-new-btn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('save-new-btn');
+  const progressEl = document.getElementById('new-upload-progress');
+  const deckName = document.getElementById('deck-select').value;
+  if (!deckName) return;
+  btn.disabled = true;
+  try{
+    const stages = await collectStages(document.getElementById('new-stage-container'), slugify(deckName), progressEl);
+    const now = new Date().toISOString();
+    const card = { id: Date.now(), deck: deckName, stages, links: [], createdAt: now, updatedAt: now };
+    // 저장 직전 최신 cards.json을 한번 더 받아 안전하게 추가 (기기 간 입력 충돌 방지용 최소 안전장치)
+    const latest = await ghGetJson('cards.json');
+    cards = latest.data || [];
+    cards.unshift(card);
+    await ghPutJson('cards.json', cards, `add card ${card.id}`);
+    toast('카드가 저장되었습니다.');
+    renderNewForm();
+    doSearch();
+  }catch(e){
+    toast('저장 실패: ' + e.message, true);
+  }finally{
+    btn.disabled = false;
+  }
+});
+
+// ================== 검색/관리 탭 ==================
+function cardSummary(card){
+  const s0 = card.stages[0]?.fields || {};
+  if (s0.headword) return s0.headword;
+  if (s0.clue) return s0.clue;
+  if (s0.problem_img) return '(수학 문제)';
+  const firstVal = Object.values(s0)[0];
+  return firstVal || `#${card.id}`;
+}
+function cardSearchText(card){
+  return JSON.stringify(card.stages).toLowerCase();
+}
+document.getElementById('search-input').addEventListener('input', doSearch);
+function doSearch(){
+  const kw = document.getElementById('search-input').value.trim().toLowerCase();
+  const label = document.getElementById('search-result-label');
+  const list = document.getElementById('search-results');
+  const hits = kw ? cards.filter(c=>cardSearchText(c).includes(kw)) : cards;
+  label.textContent = `${hits.length}개 카드`;
+  if (!hits.length){ list.innerHTML = '<div class="empty">결과 없음</div>'; return; }
+  list.innerHTML = hits.map(c=>`
+    <div class="card-row" data-id="${c.id}">
+      <div class="card-row-head">
+        <div>
+          <div class="card-row-title">${esc(cardSummary(c))}</div>
+          <div class="card-row-deck">${esc(c.deck)} · ${c.stages.length}면</div>
+        </div>
+        <div class="card-row-actions">
+          <button class="row-act-btn" data-act="edit">수정</button>
+          <button class="row-act-btn del" data-act="del">삭제</button>
+        </div>
+      </div>
+      <div class="card-row-body" id="body-${c.id}"></div>
+    </div>`).join('');
+  list.querySelectorAll('.card-row').forEach(row=>{
+    const id = Number(row.dataset.id);
+    row.querySelector('[data-act="edit"]').addEventListener('click', ()=>toggleEdit(id, row));
+    row.querySelector('[data-act="del"]').addEventListener('click', ()=>deleteCard(id));
+  });
+}
+
+function inferFieldDef(key, value){
+  const label = FIELD_LABELS[key] || key;
+  if (key==='entries' || (Array.isArray(value) && value.length && typeof value[0]==='object'))
+    return { key, label, type:'list-entry', value, subfields:[
+      {key:'word',label:'단어',type:'text'},
+      {key:'difficulty',label:'레벨',type:'select',options:difficultyOptions()},
+      {key:'definition_en',label:'영문 뜻풀이',type:'textarea'},
+      {key:'hint_kr',label:'한글 힌트',type:'text'}
+    ]};
+  if (Array.isArray(value)) return { key, label, type:'list-text', value };
+  if (/img|image/i.test(key)) return { key, label, type:'image', value };
+  if (/audio/i.test(key)) return { key, label, type:'audio', value };
+  if (/pdf/i.test(key)) return { key, label, type:'pdf', value };
+  if ((value||'').length > 50) return { key, label, type:'textarea', value };
+  return { key, label, type:'text', value };
+}
+
+function toggleEdit(id, row){
+  const body = row.querySelector('.card-row-body');
+  if (body.classList.contains('open')){ body.classList.remove('open'); body.innerHTML=''; return; }
+  const card = cards.find(c=>c.id===id);
+  const stages = card.stages.map(st=>({
+    label: st.label,
+    fields: Object.keys(st.fields).map(k=>inferFieldDef(k, st.fields[k]))
+  }));
+  const stageHtml = stages.map((s,i)=>stageCardHTML(i,s)).join('');
+  const linksHtml = renderLinksEditorHTML();
+  body.innerHTML = `
+    <div class="edit-stage-container">${stageHtml}</div>
+    <button type="button" class="list-add-btn edit-add-stage">+ 면 추가</button>
+    ${linksHtml}
+    <div class="btn-row">
+      <button class="btn btn-accent edit-save-btn">변경사항 저장</button>
+      <button class="btn btn-ghost edit-cancel-btn">취소</button>
+    </div>
+    <div class="field-hint edit-progress"></div>`;
+  body.classList.add('open');
+
+  const stageContainer = body.querySelector('.edit-stage-container');
+  wireStageEvents(stageContainer);
+  body.querySelector('.edit-add-stage').addEventListener('click', ()=>{
+    const idx = stageContainer.querySelectorAll('.stage-card').length;
+    const generic = { label:'새 면', fields:[ fieldDefEmpty({key:'text',label:'텍스트',type:'textarea'}), fieldDefEmpty({key:'image',label:'이미지',type:'image'}) ] };
+    stageContainer.insertAdjacentHTML('beforeend', stageCardHTML(idx, generic));
+  });
+
+  wireLinksEditor(body, card);
+
+  body.querySelector('.edit-cancel-btn').addEventListener('click', ()=>{ body.classList.remove('open'); body.innerHTML=''; });
+  body.querySelector('.edit-save-btn').addEventListener('click', async ()=>{
+    const saveBtn = body.querySelector('.edit-save-btn');
+    saveBtn.disabled = true;
+    const progressEl = body.querySelector('.edit-progress');
+    try{
+      const newStages = await collectStages(stageContainer, slugify(card.deck), progressEl);
+      const latest = await ghGetJson('cards.json');
+      cards = latest.data || [];
+      const target = cards.find(c=>c.id===id);
+      if (!target) throw new Error('카드를 찾을 수 없습니다 (이미 삭제됨).');
+      target.stages = newStages;
+      target.links = card._editedLinks || target.links || [];
+      target.updatedAt = new Date().toISOString();
+      await ghPutJson('cards.json', cards, `update card ${id}`);
+      toast('수정되었습니다.');
+      body.classList.remove('open'); body.innerHTML='';
+      doSearch();
+    }catch(e){
+      toast('수정 실패: ' + e.message, true);
+    }finally{
+      saveBtn.disabled = false;
+    }
+  });
+}
+
+function renderLinksEditorHTML(){
+  return `<div class="field-block">
+    <label class="field-label">관련 카드 (링크)</label>
+    <div class="links-row links-editor-list"></div>
+    <input type="text" class="search-input links-search" placeholder="연결할 카드 검색...">
+    <div class="links-search-results"></div>
+  </div>`;
+}
+function wireLinksEditor(body, card){
+  card._editedLinks = (card.links||[]).slice();
+  const listEl = body.querySelector('.links-editor-list');
+  const searchEl = body.querySelector('.links-search');
+  const resultsEl = body.querySelector('.links-search-results');
+  function renderLinkChips(){
+    listEl.innerHTML = card._editedLinks.map((l,i)=>{
+      const t = cards.find(c=>c.id===l.targetId);
+      return `<span class="link-chip" data-i="${i}">🔗 ${esc(t?cardSummary(t):('#'+l.targetId))} ✕</span>`;
+    }).join('') || '<span class="field-hint">연결된 카드 없음</span>';
+    listEl.querySelectorAll('.link-chip').forEach(chip=>{
+      chip.addEventListener('click', ()=>{ card._editedLinks.splice(Number(chip.dataset.i),1); renderLinkChips(); });
+    });
+  }
+  renderLinkChips();
+  searchEl.addEventListener('input', ()=>{
+    const kw = searchEl.value.trim().toLowerCase();
+    if (!kw){ resultsEl.innerHTML=''; return; }
+    const hits = cards.filter(c=>c.id!==card.id && cardSearchText(c).includes(kw)).slice(0,6);
+    resultsEl.innerHTML = hits.map(c=>`<div class="row-act-btn" style="display:inline-block;margin:3px" data-id="${c.id}">${esc(cardSummary(c))}</div>`).join('');
+    resultsEl.querySelectorAll('[data-id]').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        const tid = Number(el.dataset.id);
+        if (!card._editedLinks.some(l=>l.targetId===tid)) card._editedLinks.push({targetId:tid, note:''});
+        renderLinkChips();
+        searchEl.value=''; resultsEl.innerHTML='';
+      });
+    });
+  });
+}
+
+async function deleteCard(id){
+  if (!confirm('이 카드를 삭제할까요? raw 폴더의 첨부 파일은 남습니다.')) return;
+  try{
+    const latest = await ghGetJson('cards.json');
+    cards = (latest.data || []).filter(c=>c.id!==id);
+    await ghPutJson('cards.json', cards, `delete card ${id}`);
+    if (scores[id]){ delete scores[id]; await ghPutJson('scores.json', scores, `cleanup score ${id}`); }
+    toast('삭제되었습니다.');
+    doSearch();
+  }catch(e){
+    toast('삭제 실패: ' + e.message, true);
+  }
+}
+
+// ===== 설정 모달 / 새로고침 =====
+document.getElementById('setup-save-btn').addEventListener('click', async ()=>{
+  const owner = document.getElementById('input-owner').value.trim();
+  const token = document.getElementById('input-token').value.trim();
+  const errEl = document.getElementById('setup-error');
+  errEl.style.display='none';
+  if (!owner || !token){ errEl.textContent='사용자명과 토큰을 모두 입력하세요.'; errEl.style.display='block'; return; }
+  try{
+    await verifyAccess(owner, token);
+    setAuth(owner, token);
+    document.getElementById('setup-modal').classList.remove('open');
+    await loadAll();
+  }catch(e){
+    errEl.textContent = e.message; errEl.style.display='block';
+  }
+});
+document.getElementById('refresh-btn').addEventListener('click', loadAll);
+
+init();
+</script>
+</body>
+</html>
